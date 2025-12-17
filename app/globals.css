@@ -1,14 +1,22 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
+@theme {
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, monospace;
+
+  /* Giữ lại các biến màu custom của bạn */
+  --color-foreground-rgb: 0 0 0;
+  --color-background-start-rgb: 214 219 220;
+  --color-background-end-rgb: 255 255 255;
+}
+
+/* Các class custom khác giữ nguyên */
 :root {
   --foreground-rgb: 0, 0, 0;
   --background-start-rgb: 214, 219, 220;
   --background-end-rgb: 255, 255, 255;
 }
 
-/* Custom Scrollbar cho News Feed */
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
 }
@@ -17,8 +25,8 @@
   scrollbar-width: none;
 }
 
-/* Hiệu ứng chuyển màu mượt mà toàn trang */
 body {
+  color: rgb(var(--foreground-rgb));
   transition-property: color, background-color, border-color,
     text-decoration-color, fill, stroke;
   transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
