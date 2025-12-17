@@ -1,46 +1,80 @@
-import { useState, useEffect } from "react";
+// File: hooks/use-weather.ts
+// Vị trí: Thư mục gốc/hooks
+import { useQuery } from "@tanstack/react-query";
 
-// Định nghĩa kiểu dữ liệu khớp với Widget
+// Định nghĩa Interface dữ liệu trả về cho UI dùng chung
 export interface WeatherData {
-  temp: number;
-  condition: string;
-  humidity: number;
-  wind: number;
-  location: string;
+  location: {
+    name: string;
+  };
+  current: {
+    temp_c: number;
+    condition: string;
+    humidity: number;
+    wind_kph: number;
+    updated_at: string;
+  };
+  forecast: Array<{
+    time: string;
+    temp_c: number;
+    precip_prob: number;
+  }>;
+  sources: string[];
 }
 
-export function useWeather() {
-  const [data, setData] = useState<WeatherData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const fetchWeather = async () => {
-      try {
-        setLoading(true);
-        // Gọi về API Route nội bộ của Next.js
-        const res = await fetch("/api/weather");
-
-        if (!res.ok) {
-          throw new Error("Failed to fetch weather");
-        }
-
-        const result = await res.json();
-        setData(result);
-      } catch (err) {
-        console.error(err);
-        setError("Weather unavailable");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchWeather();
-
-    // Refresh mỗi 10 phút
-    const interval = setInterval(fetchWeather, 600000);
-    return () => clearInterval(interval);
-  }, []);
-
-  return { data, loading, error };
+interface WeatherResponse {
+  data: WeatherData;
+  logs: Array<{ message: string; created_at: string }>;
+  source: string;
 }
+
+interface WeatherParams {
+  lat: number;
+  lon: number;
+  name: string;
+}
+
+interface UseWeatherOptions {
+  pollingInterval?: number;
+  enabled?: boolean;
+}
+
+export const useWeather = (
+  params: WeatherParams,
+  options: UseWeatherOptions = {},
+) => {
+  const { pollingInterval = 0, enabled = true } = options;
+
+  return useQuery<WeatherResponse>({
+    queryKey: ["weather", params.lat, params.lon],
+    queryFn: async () => {
+      const query = new URLSearchParams({
+        lat: params.lat.toString(),
+        lon: params.lon.toString(),
+        name: params.name,
+      });
+
+      const res = await fetch(`/api/weather?${query}`);
+      if (!res.ok) throw new Error("Failed to fetch weather");
+      return res.json();
+    },
+    refetchInterval: pollingInterval,
+    enabled: enabled,
+    staleTime: 1000 * 60 * 5,
+  });
+};
+
+export const useForceRefreshWeather = () => {
+  return async (params: WeatherParams) => {
+    const query = new URLSearchParams({
+      lat: params.lat.toString(),
+      lon: params.lon.toString(),
+      name: params.name,
+      force: "true",
+    });
+
+    const res = await fetch(`/api/weather?${query}`);
+    if (!res.ok) throw new Error("Failed to force refresh");
+    return res.json();
+  };
+};

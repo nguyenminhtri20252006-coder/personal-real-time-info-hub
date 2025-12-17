@@ -1,50 +1,44 @@
+// File: app/api/weather/route.ts
 import { NextResponse } from "next/server";
-
-// Map mã WMO của Open-Meteo sang trạng thái dễ đọc
-const getWeatherCondition = (code: number): string => {
-  if (code === 0) return "Clear Sky";
-  if (code >= 1 && code <= 3) return "Partly Cloudy";
-  if (code >= 45 && code <= 48) return "Foggy";
-  if (code >= 51 && code <= 67) return "Drizzle/Rain";
-  if (code >= 71 && code <= 77) return "Snow";
-  if (code >= 80 && code <= 82) return "Showers";
-  if (code >= 95 && code <= 99) return "Thunderstorm";
-  return "Unknown";
-};
+import connectToDatabase from "@/lib/mongodb";
+import { getMergedWeather, updateWeatherData } from "@/lib/weather-service";
+import SystemLog from "@/models/SystemLog";
 
 export async function GET(request: Request) {
   try {
-    // Mặc định: TP.HCM (10.8231, 106.6297)
-    const lat = 10.8231;
-    const lon = 106.6297;
+    const { searchParams } = new URL(request.url);
+    const lat = parseFloat(searchParams.get("lat") || "10.8231");
+    const lon = parseFloat(searchParams.get("lon") || "106.6297");
+    const name = searchParams.get("name") || "Ho Chi Minh City";
+    const force = searchParams.get("force") === "true";
 
-    // Gọi Open-Meteo (API công khai, không cần key)
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m&timezone=auto`;
+    const code = `${lat.toFixed(2)}-${lon.toFixed(2)}`;
+    const locationParams = { name, lat, lon, code };
 
-    const res = await fetch(url, { next: { revalidate: 300 } }); // Cache 5 phút
+    await connectToDatabase();
 
-    if (!res.ok) {
-      throw new Error("Failed to fetch from Open-Meteo");
+    if (force) {
+      await updateWeatherData(locationParams, "manual");
     }
 
-    const data = await res.json();
-    const current = data.current;
+    let data = await getMergedWeather(code);
 
-    // Format dữ liệu theo chuẩn Widget của chúng ta
-    const formattedData = {
-      temp: Math.round(current.temperature_2m),
-      condition: getWeatherCondition(current.weather_code),
-      humidity: current.relative_humidity_2m,
-      wind: Math.round(current.wind_speed_10m),
-      location: "Ho Chi Minh City, VN", // Tạm thời hardcode
-    };
+    if (!data) {
+      await updateWeatherData(locationParams, "manual");
+      data = await getMergedWeather(code);
+    }
 
-    return NextResponse.json(formattedData);
-  } catch (error) {
-    console.error("Weather API Error:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch weather data" },
-      { status: 500 },
-    );
+    const latestLogs = await SystemLog.find({ module: "weather" })
+      .sort({ created_at: -1 })
+      .limit(5);
+
+    return NextResponse.json({
+      data,
+      logs: latestLogs,
+      source: "database_merged",
+    });
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }
